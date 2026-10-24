@@ -12,6 +12,7 @@ from typing import Literal
 from typing import TYPE_CHECKING
 
 from src.router.query_router import QueryRouter, RouteDecision
+from src.utils.config import get_settings
 from src.utils.logger import get_logger
 
 if TYPE_CHECKING:
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
     from src.chains.sql_chain import SQLChain
 
 logger = get_logger(__name__)
+settings = get_settings()
 
 app = FastAPI(
     title="SQL + RAG Hybrid Intelligence API",
@@ -136,6 +138,8 @@ def query(request: QueryRequest):
     # Step 1: Route the question
     decision: RouteDecision = router.route(request.question)
     effective_route = request.force_route or decision.route
+    if not request.force_route and decision.confidence < settings.router_confidence_threshold:
+        effective_route = "hybrid"
     
     logger.info(f"Processing query via route: {effective_route}")
     
@@ -144,8 +148,13 @@ def query(request: QueryRequest):
     
     if effective_route == "sql":
         result = sql_chain.query(request.question, decision.sql_entities)
+        if not result.success:
+            result = rag_chain.query(request.question, decision.rag_keywords)
+            effective_route = "rag"
+            sources = result.sources
+        else:
+            sources = ["Business Database (SQL)"]
         answer = result.answer
-        sources = ["Business Database (SQL)"]
         success = result.success
         
     elif effective_route == "rag":

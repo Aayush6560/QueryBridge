@@ -9,6 +9,8 @@ import random
 from datetime import date, timedelta
 from pathlib import Path
 
+random.seed(42)
+
 DB_PATH = Path("data/sample_db/business.db")
 DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 

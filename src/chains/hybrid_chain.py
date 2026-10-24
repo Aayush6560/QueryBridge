@@ -11,7 +11,7 @@ how to combine heterogeneous data sources into a single response.
 """
 from __future__ import annotations
 
-import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
@@ -97,9 +97,15 @@ class HybridChain:
         """
         logger.info(f"Hybrid Chain: running SQL + RAG in parallel for: {question}")
         
-        # Run both chains (could be parallelized with asyncio in production)
-        sql_result = self.sql_chain.query(question, decision.sql_entities)
-        rag_result = self.rag_chain.query(question, decision.rag_keywords)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            sql_future = pool.submit(
+                self.sql_chain.query, question, decision.sql_entities
+            )
+            rag_future = pool.submit(
+                self.rag_chain.query, question, decision.rag_keywords
+            )
+            sql_result = sql_future.result()
+            rag_result = rag_future.result()
         
         # Synthesize
         try:

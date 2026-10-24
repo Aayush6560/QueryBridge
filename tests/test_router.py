@@ -7,6 +7,7 @@ These tests use a mock LLM to avoid API calls in CI.
 import pytest
 from unittest.mock import MagicMock, patch
 from src.router.query_router import QueryRouter, RouteDecision
+from src.chains.sql_chain import is_safe_select
 
 
 # ─── Test Fixtures ────────────────────────────────────────────────────────────
@@ -55,6 +56,10 @@ class TestRouteDecisionSchema:
     def test_invalid_route(self):
         with pytest.raises(Exception):
             RouteDecision(route="invalid_route", confidence=0.9, reasoning="test")
+
+
+def test_rejects_drop_statement():
+    assert is_safe_select("DROP TABLE orders") is False
 
 
 class TestQueryRouterMocked:

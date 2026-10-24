@@ -12,6 +12,7 @@ Key design decisions:
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from langchain_openai import ChatOpenAI
 from langchain_community.utilities import SQLDatabase
@@ -24,6 +25,30 @@ from src.utils.logger import get_logger
 
 logger = get_logger(__name__)
 settings = get_settings()
+
+FORBIDDEN = re.compile(
+    r"\b(insert|update|delete|drop|alter|create|replace|attach|pragma|truncate)\b",
+    re.I,
+)
+
+
+def is_safe_select(sql: str) -> bool:
+    """Return whether SQL is a single read-only SELECT/CTE statement."""
+    statement = sql.strip().rstrip(";")
+    return (
+        statement.lower().startswith(("select", "with"))
+        and ";" not in statement
+        and not FORBIDDEN.search(statement)
+    )
+
+
+class ReadOnlySQLDatabase(SQLDatabase):
+    """SQLDatabase variant that rejects non-read-only statements."""
+
+    def run(self, command, *args, **kwargs):
+        if not is_safe_select(str(command)):
+            raise ValueError("Only a single read-only SELECT query is allowed")
+        return super().run(command, *args, **kwargs)
 
 
 @dataclass
@@ -58,7 +83,7 @@ class SQLChain:
             temperature=0,
             api_key=settings.openai_api_key,
         )
-        self.db = SQLDatabase.from_uri(
+        self.db = ReadOnlySQLDatabase.from_uri(
             settings.database_url,
             # Restrict to read-only tables for safety
             include_tables=["orders", "customers", "products", "employees"],
